@@ -1,0 +1,11 @@
+vendor/
+.env
+*.log
+*.cache
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
