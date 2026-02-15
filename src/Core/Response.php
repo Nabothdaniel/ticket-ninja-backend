@@ -15,6 +15,7 @@ class Response
     public static function success($data = null, $message = 'Success', $code = 200)
     {
         http_response_code($code);
+        header('Content-Type: application/json');
         echo json_encode([
             'success' => true,
             'message' => $message,
@@ -29,6 +30,7 @@ class Response
     public static function error($message = 'Error', $code = 400, $errors = null)
     {
         http_response_code($code);
+        header('Content-Type: application/json');
         $response = [
             'success' => false,
             'message' => $message
@@ -74,4 +76,3 @@ class Response
         self::error($message, 404);
     }
 }
-?>

@@ -57,7 +57,7 @@ class Event extends BaseModel
      */
     public function getWithOrganizer($eventId)
     {
-        $sql = "SELECT e.*, u.full_name as organizer_name, u.email as organizer_email, u.company_name
+        $sql = "SELECT e.*, u.full_name as organizer_name, u.email as organizer_email
                 FROM events e
                 LEFT JOIN users u ON e.organizer_id = u.id
                 WHERE e.id = :eventId";

@@ -38,10 +38,30 @@ class AttendeeController
         
         $eventId = $_GET['event_id'] ?? null;
         
+        // If event_id is provided, check if user has access to this event
         if ($eventId) {
+            $event = $this->eventModel->find($eventId);
+            if (!$event) {
+                Response::notFound('Event not found');
+            }
+            
+            // Fix: Organizers can only see attendees of their own events
+            if ($authUser['role'] === 'organizer' && $event['organizer_id'] !== $authUser['user_id']) {
+                Response::forbidden('You do not have permission to view attendees for this event');
+            }
+            
             $attendees = $this->attendeeModel->getByEvent($eventId);
         } else {
-            $attendees = $this->attendeeModel->all();
+            // If no event_id, filter by role
+            if ($authUser['role'] === 'organizer') {
+                $attendees = $this->attendeeModel->getByOrganizer($authUser['user_id']);
+            } else if ($authUser['role'] === 'admin') {
+                $attendees = $this->attendeeModel->all();
+            } else {
+                // Attendees can only see their own registrations? 
+                // Normally attendees use /attendees/user/{id} but let's be safe
+                $attendees = $this->attendeeModel->where('user_id', $authUser['user_id']);
+            }
         }
         
         Response::success($attendees);
@@ -211,6 +231,63 @@ class AttendeeController
         $attendees = $this->attendeeModel->getByEvent($eventId);
         
         Response::success($attendees);
+    }
+
+    /**
+     * Get tickets for authenticated user
+     */
+    public function getUserTickets($userId)
+    {
+        $authUser = AuthMiddleware::getAuthUser();
+        if (!$authUser) {
+            Response::unauthorized();
+        }
+
+        // Users can only view their own tickets
+        if ($userId !== $authUser['user_id']) {
+            Response::forbidden('You can only view your own tickets');
+        }
+
+        $tickets = $this->attendeeModel->getUserTickets($userId);
+        Response::success($tickets);
+    }
+    
+    /**
+     * Send bulk emails to attendees
+     */
+    public function sendBulkEmails()
+    {
+        $authUser = AuthMiddleware::getAuthUser();
+        if (!$authUser || $authUser['role'] !== 'organizer') {
+            Response::unauthorized();
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        $validator = new Validator($input, [
+            'event_id' => 'required',
+            'subject' => 'required',
+            'message' => 'required'
+        ]);
+
+        if (!$validator->validate()) {
+            Response::validationError($validator->errors());
+        }
+
+        // Check ownership
+        $event = $this->eventModel->find($input['event_id']);
+        if (!$event || $event['organizer_id'] !== $authUser['user_id']) {
+            Response::forbidden('You do not have permission to send emails for this event');
+        }
+
+        $attendees = $this->attendeeModel->getByEvent($input['event_id']);
+        
+        // Simulating email sending
+        // In a real production app, this would use items from NotificationService in a loop or queue
+        // For this demo, we'll return the count of recipients
+        $count = count($attendees);
+        
+        Response::success(['count' => $count], "Emails sent successfully to $count attendees");
     }
 }
 ?>

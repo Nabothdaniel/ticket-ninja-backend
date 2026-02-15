@@ -37,6 +37,55 @@ class WithdrawalController
     }
     
     /**
+     * Get user's available balance
+     */
+    public function getBalance()
+    {
+        $authUser = AuthMiddleware::getAuthUser();
+        if (!$authUser) {
+            Response::unauthorized();
+        }
+        
+        try {
+            // Calculate total revenue from ticket sales
+            $eventModel = new \App\Models\Event();
+            $attendeeModel = new \App\Models\Attendee();
+            
+            $userEvents = $eventModel->getByOrganizer($authUser['user_id']);
+            $totalRevenue = 0;
+            
+            foreach ($userEvents as $event) {
+                $ticketsSold = $event['total_tickets'] - $event['available_tickets'];
+                $totalRevenue += $ticketsSold * $event['ticket_price'];
+            }
+            
+            // Subtract total withdrawn amount
+            $totalWithdrawn = $this->withdrawalModel->getTotalWithdrawn($authUser['user_id']);
+            
+            // Subtract pending withdrawals
+            $pendingWithdrawals = $this->withdrawalModel->getByUser($authUser['user_id']);
+            $totalPending = 0;
+            foreach ($pendingWithdrawals as $withdrawal) {
+                if (in_array($withdrawal['status'], ['Pending', 'Processing'])) {
+                    $totalPending += $withdrawal['amount'];
+                }
+            }
+            
+            $availableBalance = $totalRevenue - $totalWithdrawn - $totalPending;
+            
+            Response::success([
+                'balance' => max(0, $availableBalance),
+                'total_revenue' => $totalRevenue,
+                'total_withdrawn' => $totalWithdrawn,
+                'total_pending' => $totalPending
+            ]);
+            
+        } catch (\Exception $e) {
+            Response::error('Failed to calculate balance: ' . $e->getMessage(), 500);
+        }
+    }
+    
+    /**
      * Get single withdrawal
      */
     public function show($id)

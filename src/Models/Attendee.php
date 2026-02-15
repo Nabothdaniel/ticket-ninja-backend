@@ -67,11 +67,26 @@ class Attendee extends BaseModel
     }
 
     /**
+     * Get tickets by user
+     */
+    public function getUserTickets($userId)
+    {
+        $sql = "SELECT a.*, e.title as event_title, e.date as event_date, e.time as event_time, 
+                       e.location as event_location, e.image_url as event_image
+                FROM attendees a
+                JOIN events e ON a.event_id = e.id
+                WHERE a.user_id = :userId
+                ORDER BY e.date DESC";
+        
+        return $this->query($sql, ['userId' => $userId]);
+    }
+
+    /**
      * Find attendee by ticket code
      */
     public function findByTicketCode($code)
     {
-        $sql = "SELECT a.*, u.name as user_name, u.email as user_email, e.title as event_title, e.organizer_id
+        $sql = "SELECT a.*, u.full_name as user_name, u.email as user_email, e.title as event_title, e.organizer_id
                 FROM attendees a
                 JOIN users u ON a.user_id = u.id
                 JOIN events e ON a.event_id = e.id
@@ -86,10 +101,20 @@ class Attendee extends BaseModel
     public function markAsCheckedIn($id)
     {
         $sql = "UPDATE {$this->table} SET checked_in_at = NOW() WHERE id = :id";
-        // Since query might return result set or boolean depending on implementation, 
-        // we assume it executes successfully. 
-        // If query() returns void/bool for UPDATE, this is fine.
         return $this->query($sql, ['id' => $id]);
+    }
+
+    /**
+     * Get attendees for all events of an organizer
+     */
+    public function getByOrganizer($organizerId)
+    {
+        $sql = "SELECT a.*, e.title as event_title, e.date as event_date
+                FROM attendees a
+                JOIN events e ON a.event_id = e.id
+                WHERE e.organizer_id = :organizerId
+                ORDER BY a.created_at DESC";
+        return $this->query($sql, ['organizerId' => $organizerId]);
     }
 }
 ?>

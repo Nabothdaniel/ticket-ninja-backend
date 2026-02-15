@@ -8,6 +8,7 @@
         "guzzlehttp/guzzle": "*",
         "phpmailer/phpmailer": "^7.0",
         "ramsey/uuid": "^4.7",
+        "robmorgan/phinx": "*",
         "vlucas/phpdotenv": "^5.5"
     },
     "require-dev": {
@@ -25,7 +26,8 @@
         }
     },
     "scripts": {
-        "test": "phpunit"
+        "test": "phpunit",
+        "migrate": "vendor/bin/phinx migrate"
     },
     "config": {
         "optimize-autoloader": true,

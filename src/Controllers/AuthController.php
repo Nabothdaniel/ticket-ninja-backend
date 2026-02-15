@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Core\Response;
 use App\Models\User;
+use App\Models\RefreshToken;
 use App\Utils\Validator;
 use Firebase\JWT\JWT;
 use App\Services\NotificationService;
@@ -16,12 +17,14 @@ use App\Services\NotificationService;
 class AuthController
 {
     private $userModel;
+    private $refreshTokenModel;
     private $notifier;
 
     public function __construct()
     {
         $this->userModel = new User();
-        $this->notifier = new NotificationService(); // NotificationService instance
+        $this->refreshTokenModel = new RefreshToken();
+        $this->notifier = new NotificationService();
     }
     
     /**
@@ -36,8 +39,7 @@ class AuthController
             'full_name' => 'required',
             'email' => 'required|email',
             'password' => 'required|min:6',
-            'phone' => 'required',
-            'industry' => 'required',
+            'role' => 'required|in:organizer,attendee',
         ]);
         
         if (!$validator->validate()) {
@@ -56,13 +58,15 @@ class AuthController
                 'full_name' => $input['full_name'],
                 'email' => $input['email'],
                 'password' => $input['password'],
-                'phone' => $input['phone'],
-                'industry' => $input['industry'],
+                'role' => $input['role'],
+                'phone' => $input['phone'] ?? null,
+                'company_name' => $input['company_name'] ?? null,
+                'bio' => $input['bio'] ?? null,
             ]);
             
             // Get created user
             $user = $this->userModel->find($userId);
-            unset($user['hashed_password']);
+            unset($user['password']);
 
             // Generate OTP
             $otp = rand(100000, 999999); // 6-digit OTP
@@ -79,15 +83,16 @@ class AuthController
                  <p>This OTP is valid for 10 minutes.</p>"
             );
             
-            // Generate JWT token
-            $token = $this->generateToken($user);
+            // Generate tokens
+            $tokens = $this->issueTokens($user);
             
             Response::success([
                 'id' => $user['id'],
                 'email' => $user['email'],
                 'full_name' => $user['full_name'],
                 'phone' => $user['phone'],
-                'token' => $token,
+                'access_token' => $tokens['access_token'],
+                'refresh_token' => $tokens['refresh_token'],
                 'otp_sent' => true
             ], 'Registration successful. OTP sent to email.', 201);
             
@@ -120,10 +125,10 @@ class AuthController
         
         // Get user
         $user = $this->userModel->findByEmail($input['email']);
-        unset($user['hashed_password']);
+        unset($user['password']);
         
-        // Generate JWT token
-        $token = $this->generateToken($user);
+        // Generate tokens
+        $tokens = $this->issueTokens($user);
         
         Response::success([
             'id' => $user['id'],
@@ -131,7 +136,9 @@ class AuthController
             'full_name' => $user['full_name'],
             'phone' => $user['phone'],
             'company_name' => $user['company_name'],
-            'token' => $token
+            'role' => $user['role'],
+            'access_token' => $tokens['access_token'],
+            'refresh_token' => $tokens['refresh_token']
         ], 'Login successful');
     }
     
@@ -163,24 +170,86 @@ class AuthController
     }
     
     /**
-     * Generate JWT token
+     * Issue dual tokens (Access + Refresh)
      */
-    private function generateToken($user)
+    private function issueTokens($user)
+    {
+        $accessToken = $this->generateAccessToken($user);
+        $refreshToken = bin2hex(random_bytes(40));
+        $expiresAt = date('Y-m-d H:i:s', time() + ($_ENV['JWT_REFRESH_EXPIRATION'] ?? 604800)); // 7 days
+
+        $this->refreshTokenModel->createToken($user['id'], $refreshToken, $expiresAt);
+
+        return [
+            'access_token' => $accessToken,
+            'refresh_token' => $refreshToken
+        ];
+    }
+
+    /**
+     * Generate JWT Access Token
+     */
+    private function generateAccessToken($user)
     {
         $secret = $_ENV['JWT_SECRET'] ?? 'your-secret-key-change-this-in-production';
         $issuedAt = time();
-        $expirationTime = $issuedAt + ($_ENV['JWT_EXPIRATION'] ?? 1800); // 30 minutes
-
+        $expirationTime = $issuedAt + ($_ENV['JWT_EXPIRATION'] ?? 3600); // Default 1 hour
         
         $payload = [
             'iat' => $issuedAt,
             'exp' => $expirationTime,
             'user_id' => $user['id'],
             'email' => $user['email'],
-            'full_name' => $user['full_name']
+            'full_name' => $user['full_name'],
+            'role' => $user['role'] ?? 'attendee'
         ];
         
         return JWT::encode($payload, $secret, $_ENV['JWT_ALGORITHM'] ?? 'HS256');
+    }
+
+    /**
+     * Refresh access token
+     */
+    public function refresh()
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $refreshToken = $input['refresh_token'] ?? null;
+
+        if (!$refreshToken) {
+            Response::error('Refresh token required', 400);
+        }
+
+        $tokenData = $this->refreshTokenModel->findByToken($refreshToken);
+
+        if (!$tokenData || strtotime($tokenData['expires_at']) < time()) {
+            Response::error('Invalid or expired refresh token', 401);
+        }
+
+        $user = $this->userModel->find($tokenData['user_id']);
+        if (!$user) {
+            Response::error('User not found', 404);
+        }
+
+        $newAccessToken = $this->generateAccessToken($user);
+        
+        Response::success([
+            'access_token' => $newAccessToken
+        ], 'Token refreshed');
+    }
+
+    /**
+     * Logout (Revoke refresh token)
+     */
+    public function logout()
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $refreshToken = $input['refresh_token'] ?? null;
+
+        if ($refreshToken) {
+            $this->refreshTokenModel->revokeToken($refreshToken);
+        }
+
+        Response::success(null, 'Logged out successfully');
     }
 
     /**
@@ -218,16 +287,17 @@ public function verifyOtp()
     // OTP valid → clear OTP and activate user (optional)
     $this->userModel->update($user['id'], ['otp' => null, 'otp_expires' => null, 'is_verified' => 1]);
 
-    // Generate JWT token
-    $token = $this->generateToken($user);
+    // Generate tokens
+    $tokens = $this->issueTokens($user);
 
     Response::success([
         'id' => $user['id'],
         'email' => $user['email'],
         'full_name' => $user['full_name'],
-        'token' => $token
+        'role' => $user['role'],
+        'access_token' => $tokens['access_token'],
+        'refresh_token' => $tokens['refresh_token']
     ], 'OTP verified successfully');
 }
 
 }
-?>

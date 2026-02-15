@@ -37,7 +37,7 @@ class UserController
             Response::notFound('User not found');
         }
         
-        unset($user['hashed_password']);
+        unset($user['password']);
         
         // Get user stats
         $stats = $this->userModel->getUserStats($user['id']);
@@ -60,16 +60,12 @@ class UserController
         $input = json_decode(file_get_contents('php://input'), true);
         
         // Fields that can be updated
-        $allowedFields = ['full_name', 'phone', 'industry', 'preferences'];
+        $allowedFields = ['full_name', 'phone', 'interests', 'ticket_delivery'];
         $updateData = [];
         
         foreach ($allowedFields as $field) {
             if (isset($input[$field])) {
-                if ($field === 'preferences' && is_array($input[$field])) {
-                    $updateData[$field] = json_encode($input[$field]);
-                } else {
-                    $updateData[$field] = $input[$field];
-                }
+                $updateData[$field] = $input[$field];
             }
         }
         
@@ -81,7 +77,7 @@ class UserController
             $this->userModel->update($authUser['user_id'], $updateData);
             
             $updatedUser = $this->userModel->find($authUser['user_id']);
-            unset($updatedUser['hashed_password']);
+            unset($updatedUser['password']);
             
             Response::success($updatedUser, 'Profile updated successfully');
             
@@ -90,4 +86,3 @@ class UserController
         }
     }
 }
-?>

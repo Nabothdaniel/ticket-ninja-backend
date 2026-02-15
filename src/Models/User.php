@@ -24,8 +24,7 @@ class User extends BaseModel
     {
         // Hash password before storing
         if (isset($data['password'])) {
-            $data['hashed_password'] = password_hash($data['password'], PASSWORD_BCRYPT);
-            unset($data['password']);
+            $data['password'] = password_hash($data['password'], PASSWORD_BCRYPT);
         }
         
         return $this->create($data);
@@ -42,7 +41,7 @@ class User extends BaseModel
             return false;
         }
         
-        return password_verify($password, $user['hashed_password']);
+        return password_verify($password, $user['password']);
     }
     
     /**
@@ -63,7 +62,9 @@ class User extends BaseModel
             SELECT 
                 COUNT(DISTINCT e.id) as total_events,
                 COALESCE(SUM(e.total_tickets - e.available_tickets), 0) as total_tickets_sold,
-                COALESCE(SUM((e.total_tickets - e.available_tickets) * e.ticket_price), 0) as total_revenue
+                COALESCE(SUM((e.total_tickets - e.available_tickets) * e.ticket_price), 0) as gross_revenue,
+                COALESCE(SUM((e.total_tickets - e.available_tickets) * e.ticket_price) * 0.03, 0) as platform_fee,
+                COALESCE(SUM((e.total_tickets - e.available_tickets) * e.ticket_price) * 0.97, 0) as net_revenue
             FROM events e
             WHERE e.organizer_id = :userId
         ";
@@ -72,7 +73,9 @@ class User extends BaseModel
         return $result[0] ?? [
             'total_events' => 0,
             'total_tickets_sold' => 0,
-            'total_revenue' => 0
+            'gross_revenue' => 0,
+            'platform_fee' => 0,
+            'net_revenue' => 0
         ];
     }
 }

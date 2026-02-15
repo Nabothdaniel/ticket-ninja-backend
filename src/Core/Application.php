@@ -63,6 +63,8 @@ class Application
         $this->router->post($prefix . '/auth/login', 'AuthController@login');
         $this->router->post($prefix . '/auth/forgot-password', 'AuthController@forgotPassword');
         $this->router->post($prefix . '/auth/verify-otp', 'AuthController@verifyOtp');
+        $this->router->post($prefix . '/auth/refresh', 'AuthController@refresh');
+        $this->router->post($prefix . '/auth/logout', 'AuthController@logout');
 
         
         // Protected routes (require authentication)
@@ -81,6 +83,7 @@ class Application
         $this->router->get($prefix . '/events/user/{userId}', 'EventController@getUserEvents', [$authMiddleware]);
         
         // Analytics routes
+        $this->router->get($prefix . '/analytics/system-overview', 'AnalyticsController@systemOverview', [$authMiddleware]);
         $this->router->get($prefix . '/analytics/overview', 'AnalyticsController@overview', [$authMiddleware]);
         $this->router->get($prefix . '/analytics/events/{eventId}', 'AnalyticsController@eventAnalytics', [$authMiddleware]);
         $this->router->get($prefix . '/analytics/ai-insights', 'AnalyticsController@aiInsights', [$authMiddleware]);
@@ -92,19 +95,31 @@ class Application
         $this->router->put($prefix . '/attendees/{id}', 'AttendeeController@update', [$authMiddleware]);
         $this->router->delete($prefix . '/attendees/{id}', 'AttendeeController@delete', [$authMiddleware]);
         $this->router->get($prefix . '/attendees/event/{eventId}', 'AttendeeController@getEventAttendees', [$authMiddleware]);
+        $this->router->get($prefix . '/attendees/user/{userId}', 'AttendeeController@getUserTickets', [$authMiddleware]);
+        $this->router->post($prefix . '/attendees/bulk-email', 'AttendeeController@sendBulkEmails', [$authMiddleware]);
         
         // Withdrawal routes
+        $this->router->get($prefix . '/withdrawals/balance', 'WithdrawalController@getBalance', [$authMiddleware]);
         $this->router->get($prefix . '/withdrawals', 'WithdrawalController@index', [$authMiddleware]);
         $this->router->post($prefix . '/withdrawals', 'WithdrawalController@create', [$authMiddleware]);
+
+        // Ticket Verification routes
+        $this->router->post($prefix . '/tickets/verify', 'TicketController@verify', [$authMiddleware]);
         $this->router->get($prefix . '/withdrawals/{id}', 'WithdrawalController@show', [$authMiddleware]);
+
         $this->router->put($prefix . '/withdrawals/{id}/status', 'WithdrawalController@updateStatus', [$authMiddleware]);
         
-        // Payment routes (Flutterwave)
+        // Payment routes (Paystack & Flutterwave)
+        $this->router->get($prefix . '/paystack/verify/{reference}', 'PaystackController@verifyPayment');
         $this->router->get($prefix . '/payment/verify/{transactionId}', 'PaymentController@verifyPayment');
         $this->router->get($prefix . '/payment/banks', 'PaymentController@getBanks');
         $this->router->post($prefix . '/payment/verify-account', 'PaymentController@verifyAccount');
         $this->router->post($prefix . '/payment/process-transfer', 'PaymentController@processTransfer', [$authMiddleware]);
         
+        // Settings Routes
+        $this->router->get($prefix . '/settings', 'SettingsController@getSettings', [$authMiddleware]);
+        $this->router->put($prefix . '/settings', 'SettingsController@updateSettings', [$authMiddleware]);
+
         // Ticket Verification
         $this->router->post($prefix . '/tickets/verify', 'TicketController@verify', [$authMiddleware]);
     }
@@ -114,6 +129,11 @@ class Application
      */
     public function run()
     {
+        // Security checks
+        $security = new \App\Middleware\SecurityMiddleware();
+        $security->sanitize();
+        $security->rateLimit();
+
         $method = $_SERVER['REQUEST_METHOD'];
         $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         
@@ -122,6 +142,9 @@ class Application
         if ($scriptName !== '/' && strpos($path, $scriptName) === 0) {
             $path = substr($path, strlen($scriptName));
         }
+        
+        // Normalize slashes (collapse multiple slashes into one)
+        $path = preg_replace('#/+#', '/', $path);
         
         // Ensure path starts with /
         if (empty($path) || $path[0] !== '/') {
@@ -136,4 +159,3 @@ class Application
         $this->router->dispatch($method, $path);
     }
 }
-?>

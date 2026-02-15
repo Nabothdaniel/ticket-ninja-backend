@@ -8,7 +8,8 @@
 
 // Set error reporting based on environment
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', 0); // Disable display errors to prevent JSON corruption
+error_log("API Request: " . $_SERVER['REQUEST_METHOD'] . " " . $_SERVER['REQUEST_URI']);
 
 // Set headers for JSON API responses
 header('Content-Type: application/json');
@@ -45,6 +46,34 @@ if (in_array($origin, $allowedOrigins)) {
 }
 header('Access-Control-Allow-Credentials: true');
 
+/*
+// Running Migrations in Development (Auto-Run)
+if (($_ENV['APP_ENV'] ?? 'production') === 'development') {
+    // Attempt to run migrations via shell command which is more robust than class loading in this context
+    // This avoids "Class not found" errors if the autoloader hasn't picked up Phinx yet
+    $output = [];
+    $returnCode = 0;
+    
+    // Determine path to phinx binary
+    // On Windows it might be vendor\bin\phinx.bat
+    $phinxBin = __DIR__ . '/vendor/bin/phinx';
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        $phinxBin .= '.bat';
+    }
+    
+    // Only run if the binary exists
+    if (file_exists($phinxBin)) {
+        // Run migrate command
+        exec("$phinxBin migrate -c phinx.php", $output, $returnCode);
+        
+        // Log output if failed
+        if ($returnCode !== 0) {
+            error_log("Migration failed: " . implode("\n", $output));
+        }
+    }
+}
+*/
+
 // Bootstrap the application
 try {
     $app = new App\Core\Application();
@@ -62,4 +91,3 @@ try {
         ] : null
     ]);
 }
-?>
