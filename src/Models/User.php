@@ -45,6 +45,14 @@ class User extends BaseModel
     }
     
     /**
+     * Find user by reset token
+     */
+    public function findByResetToken($token)
+    {
+        return $this->whereFirst('reset_token', $token);
+    }
+    
+    /**
      * Get user events
      */
     public function getUserEvents($userId)

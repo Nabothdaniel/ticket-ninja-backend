@@ -12,6 +12,18 @@ use App\Core\Response;
 class SecurityMiddleware
 {
     /**
+     * Apply security headers
+     */
+    public function applyHeaders()
+    {
+        header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: DENY');
+        header('Referrer-Policy: strict-origin-when-cross-origin');
+        header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' https://checkout.flutterwave.com https://unpkg.com; style-src 'self' 'unsafe-inline' https:;");
+        return true;
+    }
+
+    /**
      * Sanitize all incoming global data
      */
     public function sanitize()
@@ -55,7 +67,14 @@ class SecurityMiddleware
     public function rateLimit($limit = 60, $period = 60)
     {
         $ip = $_SERVER['REMOTE_ADDR'];
-        $key = 'rate_limit_' . md5($ip);
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
+        $routeScope = (strpos($path, '/chat/') !== false) ? 'chat' : 'api';
+        if ($routeScope === 'chat') {
+            $limit = 30;
+            $period = 60;
+        }
+
+        $key = 'rate_limit_' . md5($ip . '_' . $routeScope);
         $file = sys_get_temp_dir() . '/' . $key;
 
         $now = time();

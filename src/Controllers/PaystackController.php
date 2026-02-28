@@ -6,6 +6,7 @@ use App\Core\Response;
 use App\Models\Payment;
 use App\Models\Event;
 use App\Models\Attendee;
+use App\Models\User;
 use App\Middleware\AuthMiddleware;
 use App\Utils\Validator;
 
@@ -20,6 +21,7 @@ class PaystackController
     private $paymentModel;
     private $eventModel;
     private $attendeeModel;
+    private $userModel;
 
     public function __construct()
     {
@@ -27,6 +29,7 @@ class PaystackController
         $this->paymentModel = new Payment();
         $this->eventModel = new Event();
         $this->attendeeModel = new Attendee();
+        $this->userModel = new User();
     }
 
     /**
@@ -42,13 +45,14 @@ class PaystackController
             // 1. Idempotency Check: See if we already processed this reference
             $existingPayment = $this->paymentModel->findByReference($reference);
             if ($existingPayment && $existingPayment['status'] === 'success') {
-                // If already success, return the ticket info tied to this series_number
+                // Idempotent response: return the same payload shape as first successful verification.
                 $attendee = $this->attendeeModel->whereFirst('ticket_code', $existingPayment['series_number']);
                 Response::success([
-                    'payment' => $existingPayment,
+                    'reference' => $reference,
+                    'series_number' => $existingPayment['series_number'],
                     'attendee' => $attendee,
                     'is_duplicate' => true
-                ], 'Payment already verified');
+                ], 'Payment verified successfully');
                 return;
             }
 
@@ -87,6 +91,12 @@ class PaystackController
 
             if (!$eventId) {
                 Response::error('Event ID missing from transaction metadata', 400);
+            }
+            if (!$userId) {
+                Response::error('Authenticated user required for ticket purchase', 401);
+            }
+            if (!$this->userModel->find($userId)) {
+                Response::error('Invalid user metadata on transaction', 400);
             }
 
             // 4. Generate Series Number for the ticket

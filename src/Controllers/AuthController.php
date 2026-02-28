@@ -165,8 +165,40 @@ class AuthController
             Response::success(null, 'If the email exists, a password reset link has been sent');
         }
         
-        // TODO: Implement password reset logic (email sending, token generation)
-        Response::success(null, 'Password reset functionality will be implemented');
+        try {
+            // Generate reset token
+            $resetToken = bin2hex(random_bytes(32)); // 64-character token
+            $resetExpires = date('Y-m-d H:i:s', time() + 3600); // 1 hour expiration
+            
+            // Store reset token in database
+            $this->userModel->update($user['id'], [
+                'reset_token' => $resetToken,
+                'reset_token_expires' => $resetExpires
+            ]);
+            
+            // Generate reset link
+            $frontendUrl = $_ENV['FRONTEND_URL'] ?? 'http://localhost:3000';
+            $resetLink = "{$frontendUrl}/reset-password?token={$resetToken}";
+            
+            // Send reset email
+            $this->notifier->sendEmail(
+                $user['email'],
+                "Password Reset Request - TicketNinja",
+                "<p>Hello {$user['full_name']},</p>
+                 <p>We received a request to reset your password. Click the link below to reset your password:</p>
+                 <p><a href='{$resetLink}' style='display:inline-block;padding:12px 24px;background-color:#3b82f6;color:white;text-decoration:none;border-radius:8px;'>Reset Password</a></p>
+                 <p>Or copy and paste this link into your browser:</p>
+                 <p>{$resetLink}</p>
+                 <p>This link will expire in 1 hour.</p>
+                 <p>If you didn't request this, please ignore this email.</p>"
+            );
+            
+            Response::success(null, 'If the email exists, a password reset link has been sent');
+            
+        } catch (\Exception $e) {
+            error_log("Password reset error: " . $e->getMessage());
+            Response::success(null, 'If the email exists, a password reset link has been sent');
+        }
     }
     
     /**
@@ -298,6 +330,56 @@ public function verifyOtp()
         'access_token' => $tokens['access_token'],
         'refresh_token' => $tokens['refresh_token']
     ], 'OTP verified successfully');
+}
+
+/**
+ * Reset password with token
+ */
+public function resetPassword()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+
+    // Validate input
+    $validator = new Validator($input, [
+        'token' => 'required',
+        'password' => 'required|min:6',
+        'confirm_password' => 'required'
+    ]);
+
+    if (!$validator->validate()) {
+        Response::validationError($validator->errors());
+    }
+
+    // Check if passwords match
+    if ($input['password'] !== $input['confirm_password']) {
+        Response::error('Passwords do not match', 400);
+    }
+
+    // Find user by reset token
+    $user = $this->userModel->findByResetToken($input['token']);
+
+    if (!$user) {
+        Response::error('Invalid or expired reset token', 400);
+    }
+
+    // Check if token is expired
+    if (strtotime($user['reset_token_expires']) < time()) {
+        Response::error('Reset token has expired', 400);
+    }
+
+    try {
+        // Update password and clear reset token
+        $this->userModel->update($user['id'], [
+            'password' => password_hash($input['password'], PASSWORD_BCRYPT),
+            'reset_token' => null,
+            'reset_token_expires' => null
+        ]);
+
+        Response::success(null, 'Password reset successfully. You can now login with your new password.');
+
+    } catch (\Exception $e) {
+        Response::error('Failed to reset password: ' . $e->getMessage(), 500);
+    }
 }
 
 }

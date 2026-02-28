@@ -85,4 +85,79 @@ class UserController
             Response::error('Failed to update profile: ' . $e->getMessage(), 500);
         }
     }
+
+    /**
+     * Admin: list users
+     */
+    public function listUsers()
+    {
+        $authUser = AuthMiddleware::getAuthUser();
+        if (!$authUser) {
+            Response::unauthorized();
+        }
+        if (($authUser['role'] ?? '') !== 'admin') {
+            Response::forbidden('Admin access required');
+        }
+
+        $users = $this->userModel->all(200, 0);
+        foreach ($users as &$user) {
+            unset($user['password']);
+        }
+
+        Response::success($users);
+    }
+
+    /**
+     * Admin: list assignable agents
+     */
+    public function listAgents()
+    {
+        $authUser = AuthMiddleware::getAuthUser();
+        if (!$authUser) {
+            Response::unauthorized();
+        }
+        if (($authUser['role'] ?? '') !== 'admin') {
+            Response::forbidden('Admin access required');
+        }
+
+        $sql = "SELECT id, full_name, email, role, created_at
+                FROM users
+                WHERE role IN ('agent','admin')
+                ORDER BY created_at DESC";
+        $agents = $this->userModel->query($sql);
+        Response::success($agents);
+    }
+
+    /**
+     * Admin: update a user's role
+     */
+    public function updateUserRole($id)
+    {
+        $authUser = AuthMiddleware::getAuthUser();
+        if (!$authUser) {
+            Response::unauthorized();
+        }
+        if (($authUser['role'] ?? '') !== 'admin') {
+            Response::forbidden('Admin access required');
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $role = strtolower((string)($input['role'] ?? ''));
+
+        $allowedRoles = ['admin', 'agent', 'organizer', 'attendee'];
+        if (!in_array($role, $allowedRoles, true)) {
+            Response::error('Invalid role', 422, null, 'invalid_role');
+        }
+
+        $targetUser = $this->userModel->find($id);
+        if (!$targetUser) {
+            Response::notFound('User not found');
+        }
+
+        $this->userModel->update($id, ['role' => $role]);
+        $updated = $this->userModel->find($id);
+        unset($updated['password']);
+
+        Response::success($updated, 'User role updated');
+    }
 }

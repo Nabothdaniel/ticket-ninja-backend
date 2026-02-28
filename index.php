@@ -14,12 +14,21 @@ error_log("API Request: " . $_SERVER['REQUEST_METHOD'] . " " . $_SERVER['REQUEST
 // Set headers for JSON API responses
 header('Content-Type: application/json');
 
+// Assign or propagate request correlation ID
+$requestId = $_SERVER['HTTP_X_REQUEST_ID'] ?? bin2hex(random_bytes(8));
+header("X-Request-ID: {$requestId}");
+
 // Load Composer autoloader
 require_once __DIR__ . '/vendor/autoload.php';
 
 // Load environment variables
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
 $dotenv->load();
+
+\App\Services\Logger::info('Incoming request', [
+    'origin' => $_SERVER['HTTP_ORIGIN'] ?? null,
+    'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? null
+]);
 
 // Handle CORS preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -76,13 +85,21 @@ if (($_ENV['APP_ENV'] ?? 'production') === 'development') {
 
 // Bootstrap the application
 try {
+    \App\Core\Response::setRequestId($requestId);
     $app = new App\Core\Application();
     $app->run();
 } catch (Exception $e) {
+    \App\Services\Logger::error('Unhandled exception', [
+        'message' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+    ]);
     http_response_code(500);
     echo json_encode([
         'success' => false,
         'message' => $_ENV['APP_DEBUG'] === 'true' ? $e->getMessage() : 'Internal Server Error',
+        'error_code' => 'internal_error',
+        'request_id' => $requestId,
         'error' => $_ENV['APP_DEBUG'] === 'true' ? [
             'type' => get_class($e),
             'file' => $e->getFile(),

@@ -62,9 +62,14 @@ class Application
         $this->router->post($prefix . '/auth/register', 'AuthController@register');
         $this->router->post($prefix . '/auth/login', 'AuthController@login');
         $this->router->post($prefix . '/auth/forgot-password', 'AuthController@forgotPassword');
+        $this->router->post($prefix . '/auth/reset-password', 'AuthController@resetPassword');
         $this->router->post($prefix . '/auth/verify-otp', 'AuthController@verifyOtp');
         $this->router->post($prefix . '/auth/refresh', 'AuthController@refresh');
         $this->router->post($prefix . '/auth/logout', 'AuthController@logout');
+
+        // Monitoring routes
+        $this->router->get($prefix . '/monitoring/health', 'MonitoringController@health');
+        $this->router->get($prefix . '/monitoring/metrics', 'MonitoringController@metrics');
 
         
         // Protected routes (require authentication)
@@ -73,6 +78,9 @@ class Application
         // User routes
         $this->router->get($prefix . '/user/profile', 'UserController@getProfile', [$authMiddleware]);
         $this->router->put($prefix . '/user/profile', 'UserController@updateProfile', [$authMiddleware]);
+        $this->router->get($prefix . '/users', 'UserController@listUsers', [$authMiddleware]);
+        $this->router->get($prefix . '/users/agents', 'UserController@listAgents', [$authMiddleware]);
+        $this->router->put($prefix . '/users/{id}/role', 'UserController@updateUserRole', [$authMiddleware]);
         
         // Event routes
         $this->router->get($prefix . '/events', 'EventController@index');
@@ -115,6 +123,21 @@ class Application
         $this->router->get($prefix . '/payment/banks', 'PaymentController@getBanks');
         $this->router->post($prefix . '/payment/verify-account', 'PaymentController@verifyAccount');
         $this->router->post($prefix . '/payment/process-transfer', 'PaymentController@processTransfer', [$authMiddleware]);
+
+        // Chat routes
+        $this->router->post($prefix . '/chat/conversations', 'ChatController@createConversation');
+        $this->router->get($prefix . '/chat/conversations', 'ChatController@listConversations', [$authMiddleware]);
+        $this->router->get($prefix . '/chat/conversations/{id}/messages', 'ChatController@getMessages');
+        $this->router->post($prefix . '/chat/conversations/{id}/messages', 'ChatController@addMessage');
+        $this->router->post($prefix . '/chat/conversations/{id}/bot-reply', 'ChatController@botReply');
+        $this->router->put($prefix . '/chat/conversations/{id}/assign', 'ChatController@assignConversation', [$authMiddleware]);
+        $this->router->put($prefix . '/chat/conversations/{id}/status', 'ChatController@updateStatus', [$authMiddleware]);
+
+        // Refund routes
+        $this->router->get($prefix . '/refunds', 'RefundController@index', [$authMiddleware]);
+        $this->router->get($prefix . '/refunds/{id}', 'RefundController@show', [$authMiddleware]);
+        $this->router->post($prefix . '/refunds', 'RefundController@create', [$authMiddleware]);
+        $this->router->put($prefix . '/refunds/{id}/status', 'RefundController@updateStatus', [$authMiddleware]);
         
         // Settings Routes
         $this->router->get($prefix . '/settings', 'SettingsController@getSettings', [$authMiddleware]);
@@ -131,6 +154,7 @@ class Application
     {
         // Security checks
         $security = new \App\Middleware\SecurityMiddleware();
+        $security->applyHeaders();
         $security->sanitize();
         $security->rateLimit();
 

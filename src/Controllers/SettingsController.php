@@ -17,8 +17,12 @@ class SettingsController
     public function getSettings()
     {
         $authUser = AuthMiddleware::getAuthUser();
-        // Strict Admin Check should happen here
-        // For now, allow logged in users (or restrict to organizer/admin role)
+        if (!$authUser) {
+            Response::unauthorized();
+        }
+        if (($authUser['role'] ?? '') !== 'admin') {
+            Response::forbidden('Admin access required');
+        }
         
         $stmt = $this->db->query("SELECT * FROM settings");
         $settings = $stmt->fetchAll();
@@ -34,7 +38,12 @@ class SettingsController
     public function updateSettings()
     {
         $authUser = AuthMiddleware::getAuthUser();
-        // Add admin role check if 'role' column exists and is 'admin'
+        if (!$authUser) {
+            Response::unauthorized();
+        }
+        if (($authUser['role'] ?? '') !== 'admin') {
+            Response::forbidden('Admin access required');
+        }
         
         $input = json_decode(file_get_contents('php://input'), true);
         

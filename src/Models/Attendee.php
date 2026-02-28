@@ -86,9 +86,9 @@ class Attendee extends BaseModel
      */
     public function findByTicketCode($code)
     {
-        $sql = "SELECT a.*, u.full_name as user_name, u.email as user_email, e.title as event_title, e.organizer_id
+        $sql = "SELECT a.*, COALESCE(u.full_name, a.name) as user_name, COALESCE(u.email, a.email) as user_email, e.title as event_title, e.organizer_id
                 FROM attendees a
-                JOIN users u ON a.user_id = u.id
+                LEFT JOIN users u ON a.user_id = u.id
                 JOIN events e ON a.event_id = e.id
                 WHERE a.ticket_code = :code";
         $result = $this->query($sql, ['code' => $code]);
